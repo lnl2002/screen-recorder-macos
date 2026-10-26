@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleName</key><string>Screen Recorder</string>
+    <key>CFBundleDisplayName</key><string>Screen Recorder</string>
+    <key>CFBundleIdentifier</key><string>com.lnl2002.screenrecorder</string>
+    <key>CFBundleExecutable</key><string>ScreenRecorder</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>14.0</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSScreenCaptureUsageDescription</key><string>Record the screen you select and export a video with smooth camera movement.</string>
+    <key>NSAudioCaptureUsageDescription</key><string>Include system audio in your screen recording when you enable it.</string>
+</dict></plist>
