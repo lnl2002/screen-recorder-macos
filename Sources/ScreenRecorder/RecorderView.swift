@@ -51,20 +51,33 @@ struct RecorderView: View {
                         }
                     }
                     Toggle("Record system audio", isOn: $model.systemAudio)
-                    Text("The recorder controls are excluded from the video. Export: up to 1080p · 60 fps · MP4.")
+                    Picker("Export", selection: $model.quality) {
+                        ForEach(ExportQuality.allCases) { Text($0.title).tag($0) }
+                    }
+                    Text("The recorder controls are excluded. Original pixels are retained up to 4K. MP4 export renders every frame at 60 fps.")
                         .font(.caption).foregroundStyle(.secondary)
                 }.padding(8).disabled(model.busy)
             }
 
             GroupBox {
                 VStack(alignment: .leading, spacing: 15) {
-                    Text("Camera style").font(.headline)
+                    HStack {
+                        Text("Camera style").font(.headline)
+                        Spacer()
+                        Button("Smooth preset") {
+                            model.settings.response = 0.75
+                            model.settings.hold = 2
+                            model.settings.lead = 0.35
+                            model.settings.deadZone = 0.12
+                        }.buttonStyle(.borderless)
+                    }
                     Picker("Camera style", selection: $model.settings.mode) {
                         ForEach(ZoomMode.allCases) { Text($0.title).tag($0) }
                     }.pickerStyle(.segmented).labelsHidden()
                     Text(modeDescription).font(.callout).foregroundStyle(.secondary).frame(height: 34, alignment: .topLeading)
                     if model.settings.mode != .off {
                         setting("Zoom", value: $model.settings.zoom, range: 1.2...3, label: String(format: "%.1f×", model.settings.zoom))
+                        Text(detailHint).font(.caption).foregroundStyle(.secondary)
                         setting("Glide duration", value: $model.settings.response, range: 0.15...1.2, label: String(format: "%.2f s", model.settings.response))
                         if model.settings.mode == .auto {
                             setting("Hold after click", value: $model.settings.hold, range: 0.3...5, label: String(format: "%.1f s", model.settings.hold))
@@ -123,6 +136,15 @@ struct RecorderView: View {
         case .follow: return "Stay zoomed in. The camera gently follows your mouse across the screen."
         case .off: return "Keep the full screen in view, with no camera movement."
         }
+    }
+
+    private var detailHint: String {
+        if let session = model.session {
+            let width = Int(Double(session.manifest.width) / model.settings.zoom)
+            let height = Int(Double(session.manifest.height) / model.settings.zoom)
+            return "This source has about \(width) × \(height) pixels of detail at this zoom. More export pixels cannot recover missing detail."
+        }
+        return "For crisp zoomed text, record a high-resolution display or use a lower zoom. A 1080p source at 2× contains only 960 × 540 pixels in view."
     }
 
     private func setting(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, label: String) -> some View {

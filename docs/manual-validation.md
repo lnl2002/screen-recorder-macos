@@ -33,3 +33,12 @@ To explicitly record a three-second local test after the app has permission and 
 ```
 
 This test records the main display (or first capturable display), saves a session under Movies / Screen Recorder, exports Follow mode, and decodes the output. It never uploads the resulting private local recording.
+
+## Version 0.2 validation
+
+- Nine camera/quality tests passed, including lead-in aiming, jitter suppression, crop bounds and output sizing.
+- Release media smoke passed with a sparse 15 fps source: exactly 240 output frames, each PTS n/60, across four seconds. Audio was decoded to PCM and checked for a complete sample count.
+- Native-pixel detail test passed: a 2560×1440 source with two-pixel stripes, zoomed 2× into 1280×720, retained the expected stripe pattern (mean absolute error below 20/255).
+- Cancellation test passed and preserved the original. Release app signature verified.
+- An existing local 1920×1080 recording was re-exported with the smooth preset. The previous export averaged about 49.5 fps; the new export reports exactly 60/1 fps, 928 frames over 15.466667 seconds, and about 32.9 Mbps. A full independent FFmpeg decode completed without errors. Private recordings are not included in the repository.
+- These checks establish constant output cadence and the tested resampling path, not perceptual equivalence to Screen Studio. New Retina capture sizing still needs validation on actual 2× hardware; the inspected displays reported pixel scale 1.0.

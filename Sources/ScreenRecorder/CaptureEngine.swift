@@ -26,7 +26,8 @@ final class CaptureSink: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked 
         writer = try AVAssetWriter(outputURL: directory.appendingPathComponent("screen.mov"), fileType: .mov)
         video = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: min(60_000_000, width * height * 8),
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: min(100_000_000, width * height * 16),
+                                              AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel,
                                               AVVideoExpectedSourceFrameRateKey: fps,
                                               AVVideoMaxKeyFrameIntervalKey: fps * 2]
         ])
@@ -178,7 +179,9 @@ final class CaptureEngine {
         let ownApps = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
         let filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
         let bounds = CGDisplayBounds(display.displayID)
-        let nativeWidth = CGDisplayPixelsWide(display.displayID), nativeHeight = CGDisplayPixelsHigh(display.displayID)
+        // ScreenCaptureKit's point-to-pixel scale is authoritative for Retina capture.
+        let nativeWidth = max(2, Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded()))
+        let nativeHeight = max(2, Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded()))
         let scale = min(1, min(3840.0 / Double(nativeWidth), 2160.0 / Double(nativeHeight)))
         let width = max(2, Int(Double(nativeWidth) * scale) / 2 * 2)
         let height = max(2, Int(Double(nativeHeight) * scale) / 2 * 2)

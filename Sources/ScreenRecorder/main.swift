@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import RecorderCore
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
@@ -76,11 +77,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 }
 
-if CommandLine.arguments.contains("--smoke-test") || CommandLine.arguments.contains("--capture-test") {
+if CommandLine.arguments.contains("--smoke-test") || CommandLine.arguments.contains("--capture-test") || CommandLine.arguments.contains("--reexport") {
     _ = NSApplication.shared
     Task { @MainActor in
         do {
-            if CommandLine.arguments.contains("--capture-test") { try await SmokeTest.capture() }
+            if let index = CommandLine.arguments.firstIndex(of: "--reexport") {
+                guard index + 1 < CommandLine.arguments.count else { throw RecorderError.message("--reexport requires a session folder.") }
+                let session = try RecordingSession.open(URL(fileURLWithPath: CommandLine.arguments[index + 1]))
+                var settings = session.manifest.settings
+                if CommandLine.arguments.contains("--smooth") {
+                    settings.response = 0.75; settings.hold = 2; settings.lead = 0.35; settings.deadZone = 0.12
+                }
+                let quality: RecorderCore.ExportQuality = CommandLine.arguments.contains("--720p") ? .compact : .source
+                let output = try await VideoExporter().export(session, settings: settings, quality: quality)
+                print("Exported: \(output.path)")
+            } else if CommandLine.arguments.contains("--capture-test") { try await SmokeTest.capture() }
             else { try await SmokeTest.run() }
             exit(0)
         } catch {

@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import RecorderCore
 
 final class CameraPathTests {
@@ -56,6 +57,27 @@ final class CameraPathTests {
         let path = CameraPath(samples: [PointerSample(time: .nan, x: 1, y: 1)], duration: 0, settings: settings)
         expectEqual(path.frame(at: .infinity), CameraFrame(x: 0.5, y: 0.5, zoom: 1))
     }
+
+    func testAutoAimsAtUpcomingClickBeforeItHappens() {
+        var settings = CameraSettings(); settings.lead = 0.5
+        let path = CameraPath(samples: [PointerSample(time: 0, x: 0.1, y: 0.5),
+                                       PointerSample(time: 2, x: 0.85, y: 0.5, buttons: 1)], duration: 4, settings: settings)
+        expectGreater(path.frame(at: 1.8).x, 0.5)
+    }
+
+    func testTinyPointerJitterDoesNotMoveCamera() {
+        var settings = CameraSettings(); settings.mode = .follow
+        let samples = (0..<480).map { i in PointerSample(time: Double(i) / 120, x: 0.5 + sin(Double(i)) * 0.005, y: 0.5) }
+        let path = CameraPath(samples: samples, duration: 4, settings: settings)
+        for t in stride(from: 1.0, through: 4, by: 0.01) { expectEqual(path.frame(at: t).x, 0.5, accuracy: 0.000001) }
+    }
+
+    func testOutputResolutionDoesNotUpscaleAndKeepsOriginal() {
+        expectEqual(ExportQuality.source.size(for: CGSize(width: 3840, height: 2160)), CGSize(width: 3840, height: 2160))
+        expectEqual(ExportQuality.fullHD.size(for: CGSize(width: 3840, height: 2160)), CGSize(width: 1920, height: 1080))
+        expectEqual(ExportQuality.compact.size(for: CGSize(width: 1920, height: 1080)), CGSize(width: 1280, height: 720))
+        expectEqual(ExportQuality.fullHD.size(for: CGSize(width: 640, height: 360)), CGSize(width: 640, height: 360))
+    }
 }
 
 
@@ -84,6 +106,9 @@ private func expectGreater(_ a: Double, _ b: Double, file: StaticString = #file,
         tests.testOutOfBoundsClickDoesNotTriggerZoom()
         tests.testSamplingIsIndependentOfRenderOrder()
         tests.testEmptyAndInvalidInputIsSafe()
-        print("PASS: 6 camera planning tests (including per-frame boundary checks).")
+        tests.testAutoAimsAtUpcomingClickBeforeItHappens()
+        tests.testTinyPointerJitterDoesNotMoveCamera()
+        tests.testOutputResolutionDoesNotUpscaleAndKeepsOriginal()
+        print("PASS: 9 camera/quality tests (including per-frame boundary checks).")
     }
 }

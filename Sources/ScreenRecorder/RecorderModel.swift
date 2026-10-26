@@ -13,6 +13,9 @@ final class RecorderModel: ObservableObject {
         didSet { if let data = try? JSONEncoder().encode(settings) { UserDefaults.standard.set(data, forKey: "cameraSettings") } }
     }
     @Published var systemAudio = false
+    @Published var quality: ExportQuality = .source {
+        didSet { UserDefaults.standard.set(quality.rawValue, forKey: "exportQuality") }
+    }
     @Published var error: String?
     @Published var status = "Choose a screen and a camera style."
     @Published var output: URL?
@@ -29,6 +32,9 @@ final class RecorderModel: ObservableObject {
     var canRecord: Bool { !busy && !displays.isEmpty && !isLoadingDisplays }
 
     init() {
+        if let saved = UserDefaults.standard.string(forKey: "exportQuality"), let quality = ExportQuality(rawValue: saved) {
+            self.quality = quality
+        }
         if let data = UserDefaults.standard.data(forKey: "cameraSettings"),
            let saved = try? JSONDecoder().decode(CameraSettings.self, from: data) { settings = saved.sanitized }
         capture.onFailure = { [weak self] error in
@@ -101,7 +107,7 @@ final class RecorderModel: ObservableObject {
         }
         defer { progressTask?.cancel(); progressTask = nil; phase = .idle }
         do {
-            output = try await exporter.export(session, settings: snapshot)
+            output = try await exporter.export(session, settings: snapshot, quality: quality)
             progress = 1; status = "MP4 ready. Change the camera style to export another version."
         } catch is CancellationError {
             status = "Export cancelled. Your original recording is safe."
