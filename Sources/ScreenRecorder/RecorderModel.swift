@@ -7,12 +7,18 @@ import RecorderCore
 final class RecorderModel: ObservableObject {
     enum Phase: String { case idle, preparing, recording, stopping, exporting }
     @Published var phase = Phase.idle
+    @Published var language: AppLanguage = .en {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: "appLanguage") }
+    }
     @Published var displays: [SCDisplay] = []
     @Published var selectedDisplay: UInt32 = 0
     @Published var settings = CameraSettings() {
         didSet { if let data = try? JSONEncoder().encode(settings) { UserDefaults.standard.set(data, forKey: "cameraSettings") } }
     }
     @Published var systemAudio = false
+    @Published var webcam = WebcamSettings() {
+        didSet { if let data = try? JSONEncoder().encode(webcam) { UserDefaults.standard.set(data, forKey: "webcamSettings") } }
+    }
     @Published var quality: ExportQuality = .source {
         didSet { UserDefaults.standard.set(quality.rawValue, forKey: "exportQuality") }
     }
@@ -26,23 +32,29 @@ final class RecorderModel: ObservableObject {
     @Published var permissionGranted = CGPreflightScreenCaptureAccess()
     private let capture = CaptureEngine()
     private let exporter = VideoExporter()
+    let preview = PreviewManager()
     private var progressTask: Task<Void, Never>?
     private var recordingDirectory: URL?
     var busy: Bool { phase != .idle }
     var canRecord: Bool { !busy && !displays.isEmpty && !isLoadingDisplays }
 
     init() {
+        if let raw = UserDefaults.standard.string(forKey: "appLanguage"), let saved = AppLanguage(rawValue: raw) { language = saved }
         if let saved = UserDefaults.standard.string(forKey: "exportQuality"), let quality = ExportQuality(rawValue: saved) {
             self.quality = quality
         }
         if let data = UserDefaults.standard.data(forKey: "cameraSettings"),
            let saved = try? JSONDecoder().decode(CameraSettings.self, from: data) { settings = saved.sanitized }
+        if let data = UserDefaults.standard.data(forKey: "webcamSettings"),
+           let saved = try? JSONDecoder().decode(WebcamSettings.self, from: data) { webcam = saved.sanitized }
         capture.onFailure = { [weak self] error in
             guard let self else { return }
             self.error = error.localizedDescription
             if self.phase == .recording { Task { await self.stop() } }
         }
     }
+
+    func tr(_ english: String) -> String { L10n.text(english, language) }
 
     func refreshDisplays(requestPermission: Bool = false) async {
         guard !busy, !isLoadingDisplays else { return }
@@ -64,19 +76,26 @@ final class RecorderModel: ObservableObject {
                 selectedDisplay = displays.first(where: { $0.displayID == CGMainDisplayID() })?.displayID ?? displays.first?.displayID ?? 0
             }
             status = displays.isEmpty ? "No screens available." : "Ready to record. Your original video stays saved."
+            refreshPreview()
         } catch { self.error = error.localizedDescription }
     }
 
     func start() async {
         guard canRecord, let display = displays.first(where: { $0.displayID == selectedDisplay }) else { return }
         phase = .preparing; error = nil; output = nil
-        status = "Starting screen capture…"
+        status = "Get ready…"
         do {
-            recordingDirectory = try await capture.start(display: display, systemAudio: systemAudio)
+            await preview.stopAll()
+            await CountdownPanel(displayID: display.displayID).run()
+            status = "Starting screen capture…"
+            recordingDirectory = try await capture.start(display: display, systemAudio: systemAudio, webcam: webcam.sanitized)
             startedAt = Date(); phase = .recording
-            status = "Recording. Stop from this window or the menu bar."
+            status = webcam.enabled
+                ? "Recording. Drag the camera bubble to move it, or resize it from an edge."
+                : "Recording. Stop from this window or the menu bar."
         } catch {
             phase = .idle; self.error = error.localizedDescription; status = "Could not start recording."
+            resumePreview()
         }
     }
 
@@ -87,12 +106,29 @@ final class RecorderModel: ObservableObject {
             let saved = try await capture.stop(settings: settings.sanitized)
             session = saved; startedAt = nil
             phase = .idle
+            resumePreview()
             await export()
         } catch {
             phase = .idle; startedAt = nil
             self.error = "\(error.localizedDescription)\nSession files: \(recordingDirectory?.path ?? RecordingSession.root.path)"
             status = "Recording stopped with an error."
+            resumePreview()
         }
+    }
+
+    func refreshPreview() {
+        guard phase == .idle, let display = displays.first(where: { $0.displayID == selectedDisplay }) else { return }
+        preview.startScreen(display: display)
+    }
+
+    func updateCameraPreview() {
+        guard phase == .idle else { return }
+        Task { await preview.setCameraEnabled(webcam.enabled) }
+    }
+
+    private func resumePreview() {
+        refreshPreview()
+        Task { await preview.setCameraEnabled(webcam.enabled) }
     }
 
     func export() async {
@@ -123,11 +159,12 @@ final class RecorderModel: ObservableObject {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true; panel.canChooseFiles = false
         panel.allowsMultipleSelection = false; panel.directoryURL = RecordingSession.root
-        panel.message = "Choose a recording folder containing manifest.json and screen.mov."
+        panel.message = tr("Choose a recording folder containing manifest.json and screen.mov.")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let saved = try RecordingSession.open(url)
             session = saved; settings = saved.manifest.settings.sanitized; output = nil; error = nil
+            if let savedWebcam = saved.manifest.webcam { webcam = savedWebcam.sanitized }
             status = "Session opened. Choose a camera style and export."
         } catch { self.error = error.localizedDescription }
     }

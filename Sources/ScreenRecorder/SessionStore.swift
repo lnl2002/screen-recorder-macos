@@ -11,6 +11,7 @@ struct RecordingSession {
     let manifest: SessionManifest
     var source: URL { directory.appendingPathComponent("screen.mov") }
     var pointerFile: URL { directory.appendingPathComponent("pointer.jsonl") }
+    var webcamFile: URL { directory.appendingPathComponent("webcam.mov") }
 
     static var root: URL {
         FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask)[0]

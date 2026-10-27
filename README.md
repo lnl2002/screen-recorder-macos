@@ -16,10 +16,13 @@ open "dist/Screen Recorder.app"
 Có thể chép app trong `dist` sang Applications trước khi cấp quyền. Bản build dùng chữ ký ad hoc để chạy local; chưa có Developer ID/notarization để phát hành rộng rãi. GitHub Actions build app và lưu ZIP trong artifacts của mỗi lần chạy thành công.
 
 1. Bấm **Allow screen recording**, bật quyền trong System Settings → Privacy & Security → Screen & System Audio Recording. Mở lại app nếu macOS yêu cầu, rồi bấm Refresh.
-2. Chọn màn hình và bật system audio nếu cần.
+2. Chọn màn hình và bật system audio nếu cần. Bật **Show camera bubble** để quay webcam, kéo hình tròn tới vị trí mong muốn và chỉnh **Camera size** để thu nhỏ/phóng to. macOS sẽ hỏi quyền Camera ở lần đầu.
+   Có thể đổi toàn bộ giao diện giữa **English** và **Tiếng Việt** bằng menu ngôn ngữ ở đầu mục Capture; lựa chọn được lưu cho lần mở sau.
+   Khi đang quay, camera xuất hiện thành một cửa sổ tròn nổi ngay trên màn hình: kéo để di chuyển hoặc kéo cạnh để đổi kích thước. Mọi thay đổi vị trí/kích thước được ghi trực tiếp vào video; cửa sổ điều khiển chính vẫn được ẩn khỏi bản quay.
 3. Chọn **Auto zoom**, **Follow mouse**, hoặc **Full screen**. Bấm **Smooth preset** nếu muốn chuyển động chậm và mềm hơn; vẫn có thể chỉnh từng thông số. Chọn Original resolution / 1080p / 720p ở mục Export.
-4. Bấm **Record**. Khi xong, bấm **Stop & export** ở cửa sổ app hoặc menu bar.
-5. Bấm **Show MP4** để mở vị trí video. Đổi preset và bấm **Export again** để xuất bản khác từ cùng video gốc.
+4. Xem trước màn hình và webcam trực tiếp trong cửa sổ app; kéo webcam trên preview để chọn vị trí trước khi quay.
+5. Bấm **Record**. App hiển thị đếm ngược 3–2–1 trên màn hình đã chọn rồi mới bắt đầu ghi. Khi xong, bấm **Stop & export** ở cửa sổ app hoặc menu bar.
+6. Bấm **Show MP4** để mở vị trí video. Đổi preset và bấm **Export again** để xuất bản khác từ cùng video gốc.
 
 `⌘⇧R` bắt đầu/dừng khi cửa sổ app đang active; đây không phải global hotkey. Menu bar luôn có nút dừng. Các cửa sổ của app được loại khỏi màn hình đang quay.
 
@@ -39,6 +42,7 @@ Mỗi lần quay tạo một thư mục riêng trong `~/Movies/Screen Recorder/`
 
 ```text
 screen.mov                     # video gốc, kèm audio nếu bật
+webcam.mov                     # webcam gốc khi bật camera bubble
 pointer.jsonl                  # tọa độ, trạng thái nút chuột, thời gian
 manifest.json                  # kích thước, clock, cấu hình và số frame bị drop
 export-follow-xxxxxxxx.mp4     # mỗi lần export tạo một file mới
@@ -52,7 +56,7 @@ Nút folder mở lại một thư mục session để xuất tiếp sau khi kh�
 - Quay một màn hình mỗi lần; source giữ tỷ lệ, tối đa nằm trong 3840×2160, yêu cầu 60 fps. Tốc độ thực phụ thuộc thiết bị/tải hệ thống.
 - MP4 H.264 có lựa chọn giữ độ phân giải gốc (mặc định), giới hạn 1080p hoặc 720p; giữ tỷ lệ màn hình. Render đủ frame theo timestamp 60 fps, kể cả khi source thưa frame. Source frame gần nhất được giữ lại giữa các mốc; camera vẫn chạy mỗi frame, nhưng app không tự tạo thêm chuyển động màn hình bị thiếu trong source.
 - Decode pixel gốc → crop → resize Lanczos một lần → encode với bitrate mục tiêu cao hơn. Bitrate thực phụ thuộc nội dung. Nguồn 1080p zoom 2× chỉ còn 960×540 pixel chi tiết: export 4K hoặc tăng bitrate không thể khôi phục phần thiếu. Muốn chữ rõ ở mức zoom lớn, cần nguồn quay nhiều pixel hơn hoặc giảm zoom.
-- Có tùy chọn system audio; chưa có microphone, webcam, chọn window/region, pause/resume hoặc manual zoom markers.
+- Có tùy chọn system audio và webcam dạng hình tròn có thể đổi vị trí/kích thước; chưa có microphone, chọn window/region, pause/resume hoặc manual zoom markers.
 - Vị trí và trạng thái ba nút chuột được lấy mẫu khoảng 120 Hz, không ghi bàn phím. Click cực ngắn giữa hai lần lấy mẫu có thể bị bỏ lỡ; độ trễ thực cần đo với capture trên máy đích.
 - Bản hiện tại tải pointer log và camera path vào RAM khi export; ưu tiên clip demo ngắn. Chưa tối ưu cho bản quay nhiều giờ.
 - Nếu đổi cấu hình màn hình/rút monitor lúc quay, dừng và bắt đầu session mới. Không tự remap màn hình trong một session.

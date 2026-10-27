@@ -12,9 +12,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let appMenu = NSMenu()
         let root = NSMenuItem()
         let items = NSMenu()
-        items.addItem(withTitle: "About Screen Recorder", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        items.addItem(withTitle: model.tr("About Screen Recorder"), action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         items.addItem(.separator())
-        items.addItem(withTitle: "Quit Screen Recorder", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        items.addItem(withTitle: model.tr("Quit Screen Recorder"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         root.submenu = items; appMenu.addItem(root)
         NSApp.mainMenu = appMenu
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -26,13 +26,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func showWindow() {
         if window == nil {
-            let view = ScrollView { RecorderView(model: model) }.frame(width: 560)
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 750),
+            let view = ScrollView { RecorderView(model: model) }.frame(width: 720)
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 900),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             window.title = "Screen Recorder"
             window.contentView = NSHostingView(rootView: view)
-            window.minSize = NSSize(width: 560, height: 600)
-            window.maxSize = NSSize(width: 560, height: 1000)
+            window.minSize = NSSize(width: 720, height: 680)
+            window.maxSize = NSSize(width: 720, height: 1100)
             window.isReleasedWhenClosed = false
             window.center(); self.window = window
         }
@@ -42,16 +42,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        add("Show recorder", action: #selector(showWindow), to: menu)
+        add(model.tr("Show recorder"), action: #selector(showWindow), to: menu)
         if model.phase == .recording {
-            add("Stop & export", action: #selector(stopRecording), to: menu)
+            add(model.tr("Stop & export"), action: #selector(stopRecording), to: menu)
         } else if model.phase == .exporting {
-            add("Cancel export", action: #selector(cancelExport), to: menu)
+            add(model.tr("Cancel export"), action: #selector(cancelExport), to: menu)
         } else if model.canRecord {
-            add("Start recording", action: #selector(startRecording), to: menu)
+            add(model.tr("Start recording"), action: #selector(startRecording), to: menu)
         }
         menu.addItem(.separator())
-        if !model.busy { add("Quit Screen Recorder", action: #selector(quit), to: menu) }
+        if !model.busy { add(model.tr("Quit Screen Recorder"), action: #selector(quit), to: menu) }
     }
 
     private func add(_ title: String, action: Selector, to menu: NSMenu) {
@@ -69,9 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard model.busy else { return .terminateNow }
         let alert = NSAlert()
-        alert.messageText = "Finish your recording first"
-        alert.informativeText = "Stop the recording or cancel the export before quitting. Your original recording will be kept."
-        alert.addButton(withTitle: "Keep recorder open")
+        alert.messageText = model.tr("Finish your recording first")
+        alert.informativeText = model.tr("Stop the recording or cancel the export before quitting. Your original recording will be kept.")
+        alert.addButton(withTitle: model.tr("Keep recorder open"))
         alert.runModal()
         return .terminateCancel
     }

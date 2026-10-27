@@ -51,6 +51,22 @@ public struct CameraSettings: Codable, Equatable, Sendable {
     }
 }
 
+public struct WebcamSettings: Codable, Equatable, Sendable {
+    public var enabled = false
+    public var x = 0.86
+    public var y = 0.82
+    public var size = 0.22
+    public init() {}
+    public var sanitized: Self {
+        var value = self
+        value.size = finiteClamp(size, 0.12, 0.40, fallback: 0.22)
+        let radius = value.size / 2
+        value.x = finiteClamp(x, radius, 1 - radius, fallback: 1 - radius - 0.03)
+        value.y = finiteClamp(y, radius, 1 - radius, fallback: 1 - radius - 0.03)
+        return value
+    }
+}
+
 public struct PointerSample: Codable, Sendable {
     public let time: Double
     public let x: Double
@@ -77,15 +93,22 @@ public struct SessionManifest: Codable, Sendable {
     public var droppedVideoFrames: Int
     public var droppedAudioBuffers: Int
     public var settings: CameraSettings
+    public var webcam: WebcamSettings?
+    public var webcamTimeOffset: Double?
+    public var webcamBakedIn: Bool?
     public init(width: Int, height: Int, fps: Int, duration: Double, displayID: UInt32,
                 captureBounds: [Double], hostEpoch: Double, systemAudio: Bool,
                 videoFrames: Int, droppedVideoFrames: Int, droppedAudioBuffers: Int,
-                settings: CameraSettings) {
+                settings: CameraSettings, webcam: WebcamSettings? = nil, webcamTimeOffset: Double? = nil,
+                webcamBakedIn: Bool? = nil) {
         self.width = width; self.height = height; self.fps = fps; self.duration = duration
         self.displayID = displayID; self.captureBounds = captureBounds; self.hostEpoch = hostEpoch
         self.systemAudio = systemAudio; self.videoFrames = videoFrames
         self.droppedVideoFrames = droppedVideoFrames; self.droppedAudioBuffers = droppedAudioBuffers
         self.settings = settings
+        self.webcam = webcam
+        self.webcamTimeOffset = webcamTimeOffset
+        self.webcamBakedIn = webcamBakedIn
     }
 }
 

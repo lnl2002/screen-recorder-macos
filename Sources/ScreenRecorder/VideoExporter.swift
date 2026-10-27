@@ -63,6 +63,24 @@ final class VideoExporter {
         videoOutput.alwaysCopiesSampleData = false
         videoReader.add(videoOutput)
 
+        var webcamReader: AVAssetReader?
+        var webcamOutput: AVAssetReaderTrackOutput?
+        var webcamCurrent: CMSampleBuffer?
+        var webcamNext: CMSampleBuffer?
+        let webcamSettings = session.manifest.webcam?.sanitized
+        if webcamSettings?.enabled == true, session.manifest.webcamBakedIn != true,
+           FileManager.default.fileExists(atPath: session.webcamFile.path) {
+            let webcamAsset = AVURLAsset(url: session.webcamFile)
+            if let webcamTrack = try await webcamAsset.loadTracks(withMediaType: .video).first {
+                let reader = try AVAssetReader(asset: webcamAsset)
+                let output = AVAssetReaderTrackOutput(track: webcamTrack, outputSettings: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+                ])
+                output.alwaysCopiesSampleData = false
+                reader.add(output); webcamReader = reader; webcamOutput = output
+            }
+        }
+
         let audioTracks = try await asset.loadTracks(withMediaType: .audio)
         var audioReader: AVAssetReader?
         var audioOutput: AVAssetReaderTrackOutput?
@@ -108,7 +126,7 @@ final class VideoExporter {
         ])
         var completed = false
         defer {
-            videoReader.cancelReading(); audioReader?.cancelReading()
+            videoReader.cancelReading(); audioReader?.cancelReading(); webcamReader?.cancelReading()
             if !completed { writer.cancelWriting() }
             try? FileManager.default.removeItem(at: temporary)
         }
@@ -117,6 +135,11 @@ final class VideoExporter {
             throw videoReader.error ?? writer.error ?? RecorderError.message("Could not start export.")
         }
         if let audioReader, !audioReader.startReading() { throw audioReader.error ?? RecorderError.message("Cannot decode audio.") }
+        if let webcamReader {
+            guard webcamReader.startReading() else { throw webcamReader.error ?? RecorderError.message("Cannot decode camera video.") }
+            webcamCurrent = webcamOutput?.copyNextSampleBuffer()
+            webcamNext = webcamOutput?.copyNextSampleBuffer()
+        }
         writer.startSession(atSourceTime: .zero)
         guard var current = videoOutput.copyNextSampleBuffer() else {
             throw videoReader.error ?? RecorderError.message("The recording has no decodable frames.")
@@ -157,7 +180,19 @@ final class VideoExporter {
                     kCIInputScaleKey: size.height / crop.height,
                     kCIInputAspectRatioKey: (size.width / crop.width) / (size.height / crop.height)
                 ])
-                context.render(scaled, to: target, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
+                var composed = scaled
+                if let webcamSettings, var cameraSample = webcamCurrent, let cameraBuffer = cameraSample.imageBuffer {
+                    let cameraTime = max(0, time.seconds + (session.manifest.webcamTimeOffset ?? 0))
+                    while let candidate = webcamNext, candidate.presentationTimeStamp.seconds <= cameraTime {
+                        cameraSample = candidate; webcamCurrent = candidate
+                        webcamNext = webcamOutput?.copyNextSampleBuffer()
+                    }
+                    if let buffer = cameraSample.imageBuffer {
+                        composed = addWebcam(CIImage(cvPixelBuffer: buffer), to: scaled, outputSize: size,
+                                             settings: webcamSettings)
+                    } else { _ = cameraBuffer }
+                }
+                context.render(composed, to: target, bounds: CGRect(origin: .zero, size: size), colorSpace: colorSpace)
                 guard adaptor.append(target, withPresentationTime: time) else {
                     throw writer.error ?? RecorderError.message("Video writing failed.")
                 }
@@ -175,6 +210,34 @@ final class VideoExporter {
         try RecordingSession.writeJSON(receipt, to: session.directory.appendingPathComponent(stem + ".json"))
         completed = true; state.update(1)
         return outputURL
+    }
+
+    nonisolated private static func addWebcam(_ webcam: CIImage, to background: CIImage, outputSize: CGSize,
+                                               settings: WebcamSettings) -> CIImage {
+        let diameter = settings.size * min(outputSize.width, outputSize.height)
+        let origin = CGPoint(x: settings.x * outputSize.width - diameter / 2,
+                             y: (1 - settings.y) * outputSize.height - diameter / 2)
+        let destination = CGRect(origin: origin, size: CGSize(width: diameter, height: diameter))
+        let source = webcam.extent
+        let side = min(source.width, source.height)
+        let square = CGRect(x: source.midX - side / 2, y: source.midY - side / 2, width: side, height: side)
+        let face = webcam.cropped(to: square)
+            .transformed(by: CGAffineTransform(translationX: -square.minX, y: -square.minY))
+            .transformed(by: CGAffineTransform(scaleX: -1, y: 1).translatedBy(x: -side, y: 0))
+            .transformed(by: CGAffineTransform(scaleX: diameter / side, y: diameter / side))
+            .transformed(by: CGAffineTransform(translationX: origin.x, y: origin.y))
+        let mask = CIImage(color: .white).cropped(to: destination)
+            .applyingFilter("CIRadialGradient", parameters: [
+                "inputCenter": CIVector(x: destination.midX, y: destination.midY),
+                "inputRadius0": diameter / 2 - 1,
+                "inputRadius1": diameter / 2 + 1,
+                "inputColor0": CIColor.white,
+                "inputColor1": CIColor.clear
+            ]).cropped(to: destination)
+        return face.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: background,
+            kCIInputMaskImageKey: mask
+        ]).cropped(to: CGRect(origin: .zero, size: outputSize))
     }
 
     nonisolated private static func waitUntilReady(_ input: AVAssetWriterInput, writer: AVAssetWriter, state: ExportState) async throws {

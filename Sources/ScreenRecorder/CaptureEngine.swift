@@ -171,14 +171,39 @@ final class CaptureEngine {
     private var dimensions = (0, 0)
     private var hasAudio = false
     private let fps = 60
+    private var webcamCapture: WebcamCapture?
+    private var webcamSettings: WebcamSettings?
+    private var previewPanel: FloatingCameraPanel?
     var onFailure: ((Error) -> Void)?
 
-    func start(display: SCDisplay, systemAudio: Bool) async throws -> URL {
+    func start(display: SCDisplay, systemAudio: Bool, webcam: WebcamSettings = WebcamSettings()) async throws -> URL {
         guard stream == nil else { throw RecorderError.message("A recording is already running.") }
-        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        let ownApps = content.applications.filter { $0.processID == ProcessInfo.processInfo.processIdentifier }
-        let filter = SCContentFilter(display: display, excludingApplications: ownApps, exceptingWindows: [])
         let bounds = CGDisplayBounds(display.displayID)
+        let directory = try RecordingSession.createDirectory()
+        if webcam.enabled {
+            let camera = WebcamCapture()
+            do { try await camera.start(to: directory.appendingPathComponent("webcam.mov")) }
+            catch { try? FileManager.default.removeItem(at: directory); throw error }
+            webcamCapture = camera; webcamSettings = webcam.sanitized
+            if let session = camera.session {
+                previewPanel = FloatingCameraPanel(session: session, displayID: display.displayID, settings: webcam)
+            }
+        } else { webcamCapture = nil; webcamSettings = nil; previewPanel = nil }
+        // Hide this app's controls, but deliberately keep the floating camera window
+        // in the captured display so dragging/resizing it is recorded live.
+        let content: SCShareableContent
+        do { content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) }
+        catch {
+            previewPanel?.close(); previewPanel = nil
+            webcamCapture?.abort(); webcamCapture = nil; webcamSettings = nil
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+        let previewID = previewPanel?.windowID
+        let hiddenWindows = content.windows.filter {
+            $0.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier && $0.windowID != previewID
+        }
+        let filter = SCContentFilter(display: display, excludingWindows: hiddenWindows)
         // ScreenCaptureKit's point-to-pixel scale is authoritative for Retina capture.
         let nativeWidth = max(2, Int((filter.contentRect.width * CGFloat(filter.pointPixelScale)).rounded()))
         let nativeHeight = max(2, Int((filter.contentRect.height * CGFloat(filter.pointPixelScale)).rounded()))
@@ -193,8 +218,13 @@ final class CaptureEngine {
         config.colorSpaceName = CGColorSpace.sRGB
         config.capturesAudio = systemAudio; config.excludesCurrentProcessAudio = true
         config.sampleRate = 48000; config.channelCount = 2
-        let directory = try RecordingSession.createDirectory()
-        let sink = try CaptureSink(directory: directory, bounds: bounds, width: width, height: height, fps: fps, systemAudio: systemAudio)
+        let sink: CaptureSink
+        do { sink = try CaptureSink(directory: directory, bounds: bounds, width: width, height: height, fps: fps, systemAudio: systemAudio) }
+        catch {
+            previewPanel?.close(); previewPanel = nil
+            webcamCapture?.abort(); webcamCapture = nil; webcamSettings = nil
+            throw error
+        }
         sink.onFailure = { [weak self] error in Task { @MainActor in self?.onFailure?(error) } }
         let stream = SCStream(filter: filter, configuration: config, delegate: sink)
         do {
@@ -206,6 +236,8 @@ final class CaptureEngine {
         } catch {
             self.stream = nil; self.sink = nil
             await sink.abort()
+            previewPanel?.close(); previewPanel = nil
+            webcamCapture?.abort(); webcamCapture = nil; webcamSettings = nil
             throw error
         }
         return directory
@@ -217,13 +249,22 @@ final class CaptureEngine {
         // A stream that already failed may reject stopCapture; still finalize its writer.
         try? await stream.stopCapture()
         defer { self.stream = nil; self.sink = nil }
+        let liveWebcamSettings = previewPanel?.settings ?? webcamSettings
+        previewPanel?.close(); previewPanel = nil
+        let camera = webcamCapture
+        await camera?.stop()
+        webcamCapture = nil
         let (duration, epoch, frames, dropped, droppedAudio) = try await sink.finish(at: stopTime)
         let bounds = sink.bounds
         let manifest = SessionManifest(width: dimensions.0, height: dimensions.1, fps: fps, duration: duration,
                                        displayID: displayID, captureBounds: [bounds.minX, bounds.minY, bounds.width, bounds.height],
                                        hostEpoch: epoch, systemAudio: hasAudio, videoFrames: frames,
-                                       droppedVideoFrames: dropped, droppedAudioBuffers: droppedAudio, settings: settings)
+                                       droppedVideoFrames: dropped, droppedAudioBuffers: droppedAudio, settings: settings,
+                                       webcam: liveWebcamSettings,
+                                       webcamTimeOffset: camera.map { epoch - $0.startedAt },
+                                       webcamBakedIn: liveWebcamSettings != nil)
         try RecordingSession.writeJSON(manifest, to: sink.directory.appendingPathComponent("manifest.json"))
+        webcamSettings = nil
         return RecordingSession(directory: sink.directory, manifest: manifest)
     }
 }
